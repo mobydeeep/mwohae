@@ -1449,6 +1449,70 @@
     return /overloaded|high demand|unavailable|503|too many requests|rate limit|429/i.test(msg);
   }
 
+  // 지금 연결된 AI 경로(사용자 키 Gemini/Anthropic, 무료 프록시, 아티팩트 내장)로 system/userMsg를
+  // 보내고 raw 텍스트를 그대로 돌려준다. fetchRecommendations와 시간표 AI 자동 채우기가 공통으로 쓴다.
+  async function callAIRaw(system, userMsg, timeoutMs){
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(), timeoutMs || 25000);
+    let raw = '';
+    try{
+      if(apiKey && apiProvider === 'gemini'){
+        // 각자 발급받은 무료 Gemini 키로 호출
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              systemInstruction:{ parts:[{ text: system }] },
+              contents:[{ role:'user', parts:[{ text: userMsg }] }],
+              generationConfig:{ temperature:1, maxOutputTokens:1200 }
+            })
+          }
+        );
+        const data = await res.json();
+        if(data.error) throw new Error(data.error.message || 'Gemini API error');
+        raw = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('\n');
+      }else if(!apiKey && !window.storage && AI_PROXY_URL){
+        // 방문자가 키를 넣지 않은 일반 방문(외부 호스팅) — 배포자가 올려둔 무료 프록시로 대신 호출
+        const res = await fetch(AI_PROXY_URL, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ system, userMsg })
+        });
+        const data = await res.json();
+        if(data.error) throw new Error(data.error);
+        raw = data.text || '';
+      }else{
+        // Anthropic: 아티팩트 내장 호출 또는 사용자가 넣은 본인 키
+        const headers = { 'Content-Type':'application/json' };
+        if(apiKey){
+          headers['x-api-key'] = apiKey;
+          headers['anthropic-version'] = '2023-06-01';
+          headers['anthropic-dangerous-direct-browser-access'] = 'true';
+        }
+        const body = {
+          model:'claude-sonnet-4-6',
+          max_tokens:1200,
+          system: system,
+          messages:[{ role:'user', content:userMsg }]
+        };
+        if(!apiKey) body.tools = [{ type:'web_search_20250305', name:'web_search' }];
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method:'POST', headers, signal: controller.signal, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if(data.error) throw new Error(data.error.message || 'API error');
+        raw = (data.content||[]).map(b => b.type==='text' ? b.text : '').filter(Boolean).join('\n');
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+    return raw;
+  }
+
   // ---------- API call ----------
   async function fetchRecommendations(p){
     if(navigator.onLine === false) throw new Error('offline');
@@ -1508,67 +1572,10 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
 제외할 범주(절대 추천 금지): ${excludeStr}
 저장목록: ${savedListStr}`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(()=>controller.abort(), 25000);
-    let raw = '';
-    try{
-      if(apiKey && apiProvider === 'gemini'){
-        // 각자 발급받은 무료 Gemini 키로 호출
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
-          {
-            method:'POST',
-            headers:{ 'Content-Type':'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              systemInstruction:{ parts:[{ text: system }] },
-              contents:[{ role:'user', parts:[{ text: userMsg }] }],
-              generationConfig:{ temperature:1, maxOutputTokens:1200 }
-            })
-          }
-        );
-        const data = await res.json();
-        if(data.error) throw new Error(data.error.message || 'Gemini API error');
-        raw = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('\n');
-      }else if(!apiKey && !window.storage && AI_PROXY_URL){
-        // 방문자가 키를 넣지 않은 일반 방문(외부 호스팅) — 배포자가 올려둔 무료 프록시로 대신 호출
-        const res = await fetch(AI_PROXY_URL, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({ system, userMsg })
-        });
-        const data = await res.json();
-        if(data.error) throw new Error(data.error);
-        raw = data.text || '';
-      }else{
-        // Anthropic: 아티팩트 내장 호출 또는 사용자가 넣은 본인 키
-        const headers = { 'Content-Type':'application/json' };
-        if(apiKey){
-          headers['x-api-key'] = apiKey;
-          headers['anthropic-version'] = '2023-06-01';
-          headers['anthropic-dangerous-direct-browser-access'] = 'true';
-        }
-        const body = {
-          model:'claude-sonnet-4-6',
-          max_tokens:1200,
-          system: system,
-          messages:[{ role:'user', content:userMsg }]
-        };
-        if(!apiKey) body.tools = [{ type:'web_search_20250305', name:'web_search' }];
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method:'POST', headers, signal: controller.signal, body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        if(data.error) throw new Error(data.error.message || 'API error');
-        raw = (data.content||[]).map(b => b.type==='text' ? b.text : '').filter(Boolean).join('\n');
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
-    raw = raw.replace(/```json|```/g,'').trim();
-    const match = raw.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(match ? match[0] : raw);
+    const raw = await callAIRaw(system, userMsg);
+    const cleaned = raw.replace(/```json|```/g,'').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : cleaned);
     if(!parsed.items || !parsed.items.length) throw new Error('empty result');
     parsed.items = parsed.items.map((it,i)=>({
       ...it,
@@ -2153,6 +2160,83 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     return runs;
   }
 
+  // 빈 슬롯을 30분씩 기계적으로 채우지 않고, 연속된 빈 구간마다 그 길이에 가장 잘 맞는
+  // 추천 항목을 골라 실제 소요시간(slots)만큼 이어붙인다 — 반나절 시간표도 하루 일정처럼 보이게.
+  // 이미 몇 번 쓴 항목은 페널티를 줘서, 후보 폭이 좁아도 골고루 섞이게 한다.
+  // AI를 쓸 수 없거나 AI 자동 채우기가 실패했을 때의 폴백 — 항상 성공하는 결정론적 알고리즘.
+  function localAutoFillSlots(){
+    const usage = new Map();
+    let cursor = 0, lastPlaced = null;
+    while(cursor < scheduleSlots.length){
+      if(scheduleSlots[cursor].item){ cursor++; continue; }
+      let runEnd = cursor;
+      while(runEnd < scheduleSlots.length && !scheduleSlots[runEnd].item) runEnd++;
+      const runLen = runEnd - cursor;
+      const candidates = lastItems
+        .map(it => ({ it, fit: Math.abs((it.slots || 1) - runLen) + (usage.get(it.title) || 0) * 1.5 }))
+        .sort((a,b)=> a.fit - b.fit);
+      const pick = (candidates.find(c => c.it !== lastPlaced) || candidates[0]).it;
+      const span = Math.max(1, Math.min(pick.slots || 1, runLen));
+      for(let i=0;i<span;i++) scheduleSlots[cursor+i].item = pick;
+      usage.set(pick.title, (usage.get(pick.title) || 0) + 1);
+      lastPlaced = pick;
+      cursor += span;
+    }
+  }
+
+  // AI가 연결돼 있으면 빈 구간을 AI에게 맡긴다 — 로컬 알고리즘은 순전히 길이(slots)만 보지만,
+  // AI는 시작 시각(예: 저녁 구간엔 식사류, 늦은 밤엔 가벼운 활동)까지 고려해서 자연스러운
+  // 하루 일정을 짤 수 있다. 실패하면 예외를 던지고, 호출부(autoBtn)가 localAutoFillSlots로 폴백한다.
+  async function aiAutoFillSlots(){
+    // computeRuns()는 렌더링용이라 빈 슬롯을 일부러 병합하지 않는다(각 30분 칸을 개별로 탭할 수 있어야 해서).
+    // 여기서는 반대로 "연속된 빈 구간"을 하나로 묶어야 AI가 구간 길이를 보고 활동을 고를 수 있다.
+    const emptyRuns = [];
+    for(let i=0;i<scheduleSlots.length;){
+      if(scheduleSlots[i].item){ i++; continue; }
+      let j = i;
+      while(j+1 < scheduleSlots.length && !scheduleSlots[j+1].item) j++;
+      emptyRuns.push({ start:i, end:j });
+      i = j + 1;
+    }
+    if(!emptyRuns.length) return true; // 채울 게 없으면 성공으로 취급
+    const itemsDesc = lastItems
+      .map((it,i)=> `${i}:${it.title}(${it.slots||1}칸=${(it.slots||1)*30}분, 키워드:${(it.keywords||[]).join('/')||'없음'})`)
+      .join(' | ');
+    const runsDesc = emptyRuns
+      .map(r => `${r.start}:${fmtTime(scheduleSlots[r.start].start)}~${fmtTime(scheduleSlots[r.end].end)}(${r.end-r.start+1}칸)`)
+      .join(' | ');
+    const system = `너는 사용자가 고른 활동 목록으로 오늘 시간표의 빈 시간 구간을 채우는 스케줄러다.
+활동 목록(인덱스:이름(칸수=분, 키워드))과 빈 구간(run id:시작~끝(칸수))이 주어진다. 각 빈 구간마다 어떤 활동을 넣을지 정해라.
+규칙:
+- 구간 칸수와 활동 칸수가 정확히 안 맞아도 된다 — 활동을 쪼개지 않고, 그 구간 전체를 하나의 활동으로 채운다고 가정해라. 칸수 차이가 가장 작은 활동을 우선 고려하되, 실제 시간대에 안 맞으면(예: 늦은 밤 구간에 아침 식사류) 다른 활동을 골라라.
+- 시작 시각으로 그 구간이 하루 중 언제인지 판단해서(아침/점심/오후/저녁/밤) 자연스러운 흐름이 되게 배치해라(예: 이른 시간엔 가벼운 활동, 저녁 무렵엔 식사·모임류).
+- 바로 이웃한 구간에 같은 활동이 연달아 오는 건, 대체할 다른 활동이 있으면 피해라.
+- item 값은 반드시 주어진 활동 목록의 인덱스만 써라(같은 인덱스를 여러 구간에 써도 된다). run 값은 반드시 주어진 run id 숫자 그대로 써라.
+반드시 아래 JSON 형식으로만, 마크다운이나 다른 설명 없이 순수 JSON만 출력해라:
+{"assignments":[{"run":0,"item":1}]}`;
+    const userMsg = `활동 목록: ${itemsDesc}\n빈 구간: ${runsDesc}`;
+
+    const raw = await callAIRaw(system, userMsg, 15000);
+    const cleaned = raw.replace(/```json|```/g,'').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : cleaned);
+    if(!parsed.assignments || !parsed.assignments.length) throw new Error('empty assignments');
+
+    const runByStart = new Map(emptyRuns.map(r => [r.start, r]));
+    let applied = 0;
+    parsed.assignments.forEach(a=>{
+      const run = runByStart.get(a.run);
+      const item = lastItems[a.item];
+      if(!run || !item) return; // AI가 존재하지 않는 run/item을 줬으면 그 항목만 조용히 무시
+      for(let i=run.start; i<=run.end; i++) scheduleSlots[i].item = item;
+      applied++;
+    });
+    if(applied === 0) throw new Error('no valid assignments');
+    // AI가 일부 구간을 빠뜨렸을 수 있으니, 남은 빈 구간은 로컬 알고리즘으로 마저 채운다
+    if(scheduleSlots.some(s=>!s.item)) localAutoFillSlots();
+    return true;
+  }
+
   function paintTimetable(){
     const wrap = $('timetableWrap');
     const runs = computeRuns();
@@ -2273,27 +2357,15 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       };
     });
     const autoBtn = $('timetableAuto');
-    if(autoBtn) autoBtn.onclick = ()=>{
+    if(autoBtn) autoBtn.onclick = async ()=>{
       if(!lastItems.length) return;
-      // 빈 슬롯을 30분씩 기계적으로 채우지 않고, 연속된 빈 구간마다 그 길이에 가장 잘 맞는
-      // 추천 항목을 골라 실제 소요시간(slots)만큼 이어붙인다 — 반나절 시간표도 하루 일정처럼 보이게.
-      // 이미 몇 번 쓴 항목은 페널티를 줘서, 후보 폭이 좁아도 골고루 섞이게 한다.
-      const usage = new Map();
-      let cursor = 0, lastPlaced = null;
-      while(cursor < scheduleSlots.length){
-        if(scheduleSlots[cursor].item){ cursor++; continue; }
-        let runEnd = cursor;
-        while(runEnd < scheduleSlots.length && !scheduleSlots[runEnd].item) runEnd++;
-        const runLen = runEnd - cursor;
-        const candidates = lastItems
-          .map(it => ({ it, fit: Math.abs((it.slots || 1) - runLen) + (usage.get(it.title) || 0) * 1.5 }))
-          .sort((a,b)=> a.fit - b.fit);
-        const pick = (candidates.find(c => c.it !== lastPlaced) || candidates[0]).it;
-        const span = Math.max(1, Math.min(pick.slots || 1, runLen));
-        for(let i=0;i<span;i++) scheduleSlots[cursor+i].item = pick;
-        usage.set(pick.title, (usage.get(pick.title) || 0) + 1);
-        lastPlaced = pick;
-        cursor += span;
+      if(hasAI() && navigator.onLine !== false){
+        autoBtn.disabled = true;
+        autoBtn.textContent = '✨ AI가 채우는 중...';
+        const ok = await aiAutoFillSlots().catch(()=>false);
+        if(!ok) localAutoFillSlots(); // AI 실패해도 조용히 로컬 알고리즘으로 폴백 — 자동 채우기는 항상 동작해야 한다
+      }else{
+        localAutoFillSlots();
       }
       pickerOpenIndex = null;
       paintTimetable();
