@@ -1370,13 +1370,23 @@
     try{
       result = await fetchRecommendations(payload);
     }catch(e){
-      console.error(e);
-      result = fallbackRecommendations(payload);
-      result._offline = true;
-      if(e && e.message === 'no-api-key') result._reason = 'no-key';
-      else if(navigator.onLine === false) result._reason = 'offline';
-      else result._reason = 'api-error'; // 키는 있는데 호출 자체가 실패한 경우(잘못된 키·CORS·요청 오류 등) — "인터넷 연결 없음"으로 잘못 표시하지 않는다
-      result._errorMsg = (e && e.message) || '';
+      // 과부하(503/high demand 등)처럼 잠깐 기다리면 풀리는 오류는 한 번 더 시도해본다 —
+      // 그 사이 사용자에게는 로딩 화면이 그대로 유지된다.
+      if(isTransientAIError(e)){
+        await new Promise(r=>setTimeout(r, 1200));
+        try{ result = await fetchRecommendations(payload); }
+        catch(e2){ e = e2; }
+      }
+      if(!result){
+        console.error(e);
+        result = fallbackRecommendations(payload);
+        result._offline = true;
+        if(e && e.message === 'no-api-key') result._reason = 'no-key';
+        else if(navigator.onLine === false) result._reason = 'offline';
+        else if(isTransientAIError(e)) result._reason = 'overloaded';
+        else result._reason = 'api-error'; // 키는 있는데 호출 자체가 실패한 경우(잘못된 키·CORS·요청 오류 등) — "인터넷 연결 없음"으로 잘못 표시하지 않는다
+        result._errorMsg = (e && e.message) || '';
+      }
     }
     // AI 추천 성공 여부를 티켓 헤드 배지로 항상 보여준다(실패했을 때만 안내가 뜨는 비대칭 해소)
     result._source = result._offline ? 'offline' : 'ai';
@@ -1386,6 +1396,13 @@
   };
 
   $('retryBtn').onclick = ()=> $('issueBtn').click();
+
+  // AI 서버가 일시적으로 붐빌 때 나는 오류(과부하/요청 초과) — 키 문제가 아니라 "잠깐 후 재시도"가 정답이라
+  // "키가 맞는지 확인하라"는 안내를 보여주면 안 된다.
+  function isTransientAIError(e){
+    const msg = (e && e.message) || '';
+    return /overloaded|high demand|unavailable|503|too many requests|rate limit|429/i.test(msg);
+  }
 
   // ---------- API call ----------
   async function fetchRecommendations(p){
@@ -1941,6 +1958,8 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     $('errorSlot').innerHTML = !result._offline ? ''
       : (result._reason === 'no-key'
         ? `<div class="error-box">기본 추천으로 보여주고 있어요. 상단 🤖 AI 버튼에서 무료 키를 연결하면 날씨·영업시간까지 반영돼요.</div>`
+        : result._reason === 'overloaded'
+          ? `<div class="error-box">지금 AI 서버가 많이 붐벼서 기본 추천으로 보여주고 있어요. 키 문제는 아니니, 잠시 후 "다시 뽑기"를 눌러보세요.</div>`
         : result._reason === 'api-error'
           ? `<div class="error-box">AI 호출에 실패해서 기본 추천으로 보여주고 있어요. 키가 맞는지, 사용량이 남았는지 확인해보세요.${result._errorMsg ? ` (${escapeHtml(result._errorMsg)})` : ''}</div>`
           : `<div class="error-box">지금은 인터넷 연결 없이 기본 추천만 보여주고 있어요. 연결되면 다시 뽑아보세요.</div>`);
