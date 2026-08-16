@@ -798,6 +798,25 @@
     </div>
 
     <div class="field">
+      <div class="field-label">시간대 (선택, 안 고르면 지금 기준)</div>
+      <div class="chip-row" id="todChips">
+        <div class="chip" data-v="새벽">새벽</div>
+        <div class="chip" data-v="오전">오전</div>
+        <div class="chip" data-v="오후">오후</div>
+        <div class="chip" data-v="저녁">저녁</div>
+        <div class="chip" data-v="밤">밤</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">요일 (선택, 안 고르면 오늘 기준)</div>
+      <div class="chip-row" id="dayTypeChips">
+        <div class="chip" data-v="평일">평일</div>
+        <div class="chip" data-v="주말">주말</div>
+      </div>
+    </div>
+
+    <div class="field">
       <div class="field-label">위치</div>
       <input type="text" id="locInput" placeholder="예: 강남역, 홍대 — 비워두면 '근처'로 찾아요" />
     </div>
@@ -946,7 +965,7 @@
 
   // ---------- state ----------
   let savedPlaces = [];
-  let selection = { time:null, money:null, solo:'혼자' };
+  let selection = { time:null, money:null, solo:'혼자', timeOfDay:null, dayType:null };
   let lastItems = [];
   let scheduleSlots = [];   // [{start:Date, end:Date, item:null|object}]
   let selectedItemIndex = null;
@@ -1071,6 +1090,10 @@
     if(hour < 17) return '오후';
     if(hour < 21) return '저녁';
     return '밤';
+  }
+  function getDayType(d){
+    const day = d.getDay();
+    return (day === 0 || day === 6) ? '주말' : '평일';
   }
   // 나이대별 성향 키워드(오프라인 매칭용, MBTI와 동일한 가중 방식)
   function ageBracketKeywords(age){
@@ -1350,10 +1373,28 @@
       c.classList.add('selected'); selection.solo = c.dataset.v;
     };
   });
+  // 시간대/요일은 필수가 아니라서, 고른 칩을 다시 누르면 선택 해제되고 "지금/오늘 기준"으로 돌아간다
+  document.querySelectorAll('#todChips .chip').forEach(c=>{
+    c.onclick = ()=>{
+      const already = c.classList.contains('selected');
+      document.querySelectorAll('#todChips .chip').forEach(x=>x.classList.remove('selected'));
+      selection.timeOfDay = already ? null : c.dataset.v;
+      if(!already) c.classList.add('selected');
+    };
+  });
+  document.querySelectorAll('#dayTypeChips .chip').forEach(c=>{
+    c.onclick = ()=>{
+      const already = c.classList.contains('selected');
+      document.querySelectorAll('#dayTypeChips .chip').forEach(x=>x.classList.remove('selected'));
+      selection.dayType = already ? null : c.dataset.v;
+      if(!already) c.classList.add('selected');
+    };
+  });
 
   // ---------- issue ticket ----------
   $('issueBtn').onclick = async ()=>{
     show('screen-loading');
+    const now = new Date();
     const payload = {
       time: selection.time,
       money: selection.money,
@@ -1363,6 +1404,10 @@
       mbti: userMbti,
       age: userAge,
       gender: userGender,
+      timeOfDay: selection.timeOfDay || getTimeOfDay(now.getHours()),
+      timeOfDayChosen: !!selection.timeOfDay,
+      dayType: selection.dayType || getDayType(now),
+      dayTypeChosen: !!selection.dayType,
       exclude: excludedCategories.slice()
     };
     currentPayload = payload;
@@ -1410,7 +1455,9 @@
     if(!hasAI()) throw new Error('no-api-key');
     const now = new Date();
     const timeStr = now.toLocaleString('ko-KR', { hour:'2-digit', minute:'2-digit', weekday:'long' });
-    const timeOfDay = getTimeOfDay(now.getHours());
+    const actualTimeOfDay = getTimeOfDay(now.getHours());
+    const timeOfDay = p.timeOfDay || actualTimeOfDay;
+    const dayType = p.dayType || getDayType(now);
     const savedListStr = savedPlaces.length
       ? savedPlaces.map(s=>`${s.title}(${s.desc||'기타'})`).join(', ')
       : '없음';
@@ -1421,6 +1468,7 @@
 위치가 구체적으로 주어지면(예: '강남역') 실제 그 지역에서 갈 수 있을 법한 형태로 title/desc를 작성해라(예: "강남역 근처 카페" 처럼 위치를 자연스럽게 녹여라). 위치가 '근처'처럼 막연하면 일반적인 표현을 써라.
 선택한 시간을 알차게 채울 수 있는 활동을 우선해라. 예를 들어 2시간을 선택했는데 10분짜리 활동만 추천하면 안 된다. 단, 활동 자체가 원래 짧은 게 자연스러운 경우(예: 산책, 커피 한 잔)는 괜찮다.
 현재 시각·요일·시간대(새벽/오전/오후/저녁/밤)를 고려해서 영업시간/상영시간/이용가능 여부가 그럴듯하게 맞도록 만들어라(예: 밤 11시엔 카페 대신 야간 산책, 편의점 등, 새벽엔 실내 24시간 업종 위주).
+사용자가 시간대나 평일/주말을 직접 지정했다면(아래 "기준 시간대"/"기준 요일"에 표시됨) 실제 지금이 아니라 그 지정값을 기준으로 추천해라(예: 지금은 평일 오후지만 "주말 저녁"을 골랐다면 주말 저녁에 붐빌 만한 곳·영업시간을 가정해라). 평일/주말 차이는 사람 몰림·영업시간·분위기에 반영해라(예: 주말은 브런치·나들이 장소가 붐빌 수 있음, 평일 낮은 한산함).
 필요하면 위치의 대략적인 현재 날씨를 검색해서 반영하고, 비/눈이면 실내 위주로 추천해라.
 사용자의 저장목록에 지금 조건에 맞는 게 있으면 반드시 하나는 그 목록에서 골라 포함하고 title 앞에 저장목록에서 왔다는 걸 알 수 있게 그대로 이름을 써라.
 예산 규칙: "무료"를 선택했으면 정말 돈이 안 드는 활동만 추천해라. 그 외 예산(~1만원/~3만원/5만원+)을 선택했으면 무료 활동은 넣지 말고, 실제로 그 예산 범위 안에서 "돈을 쓰는" 활동 위주로 추천해라(예: ~3만원 선택 시 1만원~3만원 사이에서 실제로 쓰는 곳 위주로, 산책·집에서 쉬기 같은 무료 활동은 제외).
@@ -1446,7 +1494,9 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
         }).join(', ')
       : '없음';
 
-    const userMsg = `현재 시각: ${timeStr} (${timeOfDay})
+    const userMsg = `현재 시각: ${timeStr} (실제 지금은 ${actualTimeOfDay})
+기준 시간대: ${timeOfDay}${p.timeOfDayChosen ? ' (사용자가 직접 지정 — 실제 지금과 다르면 이 시간대를 기준으로 추천할 것)' : ' (사용자가 따로 안 골라서 지금 시간대 그대로)'}
+기준 요일: ${dayType}${p.dayTypeChosen ? ' (사용자가 직접 지정)' : ' (오늘 기준)'}
 위치: ${p.loc}
 사용 가능 시간: ${p.time}
 예산: ${p.money}
@@ -1753,7 +1803,9 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     const mbtiAxis = mbtiAxisKeywords(p.mbti);
     const ageKeywords = ageBracketKeywords(p.age);
     const isMinor = p.age && p.age < 19;
-    const isNight = getTimeOfDay(new Date().getHours()) === '새벽' || getTimeOfDay(new Date().getHours()) === '밤';
+    // 사용자가 시간대를 직접 골랐으면 그걸 기준으로, 안 골랐으면(옛 호출부 포함) 지금 시각 기준으로
+    const effectiveTimeOfDay = p.timeOfDay || getTimeOfDay(new Date().getHours());
+    const isNight = effectiveTimeOfDay === '새벽' || effectiveTimeOfDay === '밤';
     const hasSpecificLoc = p.loc && p.loc !== '근처';
 
     // 안전 필터(미성년자 성인전용 장소 제외)와 사용자가 직접 뺀 범주는 절대 완화하지 않음
@@ -1911,7 +1963,9 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
   function renderTicket(p, result){
     const now = new Date();
     const ts = now.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-    const timeOfDay = getTimeOfDay(now.getHours());
+    // 실제 지금이 아니라, 이 추천에 실제로 쓰인 기준 시간대/요일을 보여준다(사용자가 직접 골랐을 수도 있어서)
+    const timeOfDay = p.timeOfDay || getTimeOfDay(now.getHours());
+    const dayType = p.dayType || getDayType(now);
     const noteHtml = result.note ? `<div class="ticket-note">💡 ${escapeHtml(result.note)}</div>` : '';
     const itemsHtml = (result.items||[]).map((it,i)=>{
       const isSaved = savedPlaces.some(s => s.title === it.title);
@@ -1945,7 +1999,7 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     $('ticketBody').innerHTML = `
       <div class="ticket-head">
         <div class="title">뭐하지? 발권 <span class="source-badge ${result._source==='ai' ? 'ai' : 'offline'}">${result._source==='ai' ? '✨ AI 추천' : '🧮 기본 추천'}</span></div>
-        <div class="meta">${p.loc} · ${p.time} · ${p.money} · ${p.solo}${p.age ? ' · '+p.age+'세' : ''} · ${timeOfDay}</div>
+        <div class="meta">${p.loc} · ${p.time} · ${p.money} · ${p.solo}${p.age ? ' · '+p.age+'세' : ''} · ${dayType} ${timeOfDay}</div>
       </div>
       ${noteHtml}
       ${itemsHtml}

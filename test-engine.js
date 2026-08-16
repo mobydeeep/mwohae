@@ -143,6 +143,18 @@ console.log('\n재추천 다양성');
   check('같은 조건 반복 추천 시 1순위가 매번 고정되지 않음', firsts.size >= 2, `서로 다른 1순위 ${firsts.size}종류`);
 }
 
+// ── 7d. 사용자가 지정한 시간대(timeOfDay)가 실제 지금 시각을 덮어씀 ──
+console.log('\n시간대 지정');
+{
+  let leaks = 0;
+  for (let i = 0; i < 100; i++) {
+    // 실제로 지금이 언제든, timeOfDay:'밤'을 지정하면 dayOnly 항목은 빠져야 한다
+    fallbackRecommendations({ time:'2시간', money:'~3만원', solo:'혼자', loc:'근처', mood:'', mbti:'', age:30, exclude:[], timeOfDay:'밤' })
+      .items.forEach(it => { const s = findSource(it); if (s && s.dayOnly) leaks++; });
+  }
+  check('timeOfDay:밤 지정 시 dayOnly 항목 노출 0건', leaks === 0, `노출 ${leaks}건`);
+}
+
 // ── 7c. 소요시간(slots) 필드 ───────────────────────────────
 console.log('\n소요시간 필드');
 {
