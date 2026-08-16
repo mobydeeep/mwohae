@@ -1174,7 +1174,7 @@
   }
   // 배포자가 Cloudflare Workers 프록시를 올려두면, 방문자는 키 입력 없이 무료 AI 추천을 받는다.
   // 배포 방법: worker/README.md 참고. 배포 후 발급되는 워커 주소를 아래에 넣으면 바로 적용된다.
-  const AI_PROXY_URL = '';
+  const AI_PROXY_URL = 'https://mwohae-ai-proxy.sms6171.workers.dev';
   function hasAI(){
     // Claude 아티팩트 안에서는 키 없이도 내장 AI를 쓸 수 있음
     return !!apiKey || !!window.storage || !!AI_PROXY_URL;
