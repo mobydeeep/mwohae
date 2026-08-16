@@ -1306,7 +1306,10 @@
       console.error(e);
       result = fallbackRecommendations(payload);
       result._offline = true;
-      result._reason = (e && e.message === 'no-api-key') ? 'no-key' : 'offline';
+      if(e && e.message === 'no-api-key') result._reason = 'no-key';
+      else if(navigator.onLine === false) result._reason = 'offline';
+      else result._reason = 'api-error'; // 키는 있는데 호출 자체가 실패한 경우(잘못된 키·CORS·요청 오류 등) — "인터넷 연결 없음"으로 잘못 표시하지 않는다
+      result._errorMsg = (e && e.message) || '';
     }
     lastItems = result.items || [];
     renderTicket(payload, result);
@@ -1845,7 +1848,9 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     $('errorSlot').innerHTML = !result._offline ? ''
       : (result._reason === 'no-key'
         ? `<div class="error-box">기본 추천으로 보여주고 있어요. 상단 🤖 AI 버튼에서 무료 키를 연결하면 날씨·영업시간까지 반영돼요.</div>`
-        : `<div class="error-box">지금은 인터넷 연결 없이 기본 추천만 보여주고 있어요. 연결되면 다시 뽑아보세요.</div>`);
+        : result._reason === 'api-error'
+          ? `<div class="error-box">AI 호출에 실패해서 기본 추천으로 보여주고 있어요. 키가 맞는지, 사용량이 남았는지 확인해보세요.${result._errorMsg ? ` (${escapeHtml(result._errorMsg)})` : ''}</div>`
+          : `<div class="error-box">지금은 인터넷 연결 없이 기본 추천만 보여주고 있어요. 연결되면 다시 뽑아보세요.</div>`);
 
     $('ticketBody').querySelectorAll('.item-save').forEach(btn=>{
       btn.onclick = async (e)=>{
