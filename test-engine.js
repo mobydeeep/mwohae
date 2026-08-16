@@ -130,6 +130,28 @@ console.log('\n다양성');
   check('같은 티켓에 중복 항목 없음', dupes === 0, `중복 ${dupes}회`);
 }
 
+// ── 7b. 재추천 다양성(novelty) ────────────────────────────
+console.log('\n재추천 다양성');
+{
+  // 후보 풀이 넉넉한 조건에서 "다시 뽑기"를 반복하면 1순위가 계속 바뀌는지 확인
+  // (풀 자체가 결과 개수와 같은 극단적으로 얕은 조합은 다양화할 여지가 없으므로 제외)
+  const firsts = new Set();
+  for (let i = 0; i < 10; i++) {
+    const r = fallbackRecommendations({ time:'1시간', money:'~3만원', solo:'any', loc:'근처', mood:'', mbti:'', age:30, exclude:[] });
+    if (r.items[0]) firsts.add(r.items[0].title);
+  }
+  check('같은 조건 반복 추천 시 1순위가 매번 고정되지 않음', firsts.size >= 2, `서로 다른 1순위 ${firsts.size}종류`);
+}
+
+// ── 7c. 소요시간(slots) 필드 ───────────────────────────────
+console.log('\n소요시간 필드');
+{
+  let ok = true;
+  const r = fallbackRecommendations({ time:'2시간', money:'~3만원', solo:'혼자', loc:'근처', mood:'', mbti:'', age:30, exclude:[] });
+  r.items.forEach(it => { if (!Number.isInteger(it.slots) || it.slots < 1 || it.slots > 4) ok = false; });
+  check('추천 항목마다 slots(1~4) 값이 붙음', ok);
+}
+
 // ── 7. 장소 반영 ───────────────────────────────────────────
 console.log('\n장소 반영');
 {

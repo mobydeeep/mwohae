@@ -990,6 +990,12 @@
     if(!excludedKeys || !excludedKeys.length) return false;
     return EXCLUDE_CATEGORIES.some(c => excludedKeys.includes(c.key) && c.test(it));
   }
+  // 활동의 "1차 성격 범주"를 판별 — 다양성 로직에서 mood[0]만으로는 못 거르는
+  // 같은 종류(예: 카페 vs 카페) 항목이 겹쳐 나오는 걸 막기 위해 사용
+  function categoryOf(it){
+    const c = EXCLUDE_CATEGORIES.find(c => c.test(it));
+    return c ? c.key : 'etc';
+  }
 
   // 새벽(0-6) / 오전(6-11) / 오후(11-17) / 저녁(17-21) / 밤(21-24)
   function getTimeOfDay(hour){
@@ -1335,8 +1341,9 @@
 "제외할 범주"가 주어지면 그 범주에 해당하는 활동은 어떤 이유로도 절대 추천하지 마라. 다른 조건과 충돌하더라도 제외 요청이 항상 우선이고, 그 결과 추천이 3개 미만이 되어도 억지로 채우지 마라. 이 규칙은 완화하지 않는다.
 각 항목에 그 항목을 설명하는 한국어 키워드 2~3개(예: 힐링, 즉흥, 조용히)를 keywords 배열로 붙여라. 사용자 성향·나이 키워드와 겹치는 게 많을수록 그 항목을 앞쪽에 배치해라.
 각 항목에 reason 필드로 왜 이걸 추천했는지 2~3문장 설명을 붙여라. 반드시 예산을 실제로 어떻게 쓰는지, (성향이 주어졌다면) MBTI 성향과의 연관성, (나이가 주어졌다면) 나이대와의 연관성을 구체적으로 언급해라.
+각 항목에 slots 필드로 그 활동이 실제로 차지할 시간을 30분 단위 숫자로 붙여라: 1=약 30분, 2=약 1시간, 3=약 2시간, 4=반나절 이상. 사용자가 나중에 이 활동들로 시간표를 짜는 데 쓰인다.
 반드시 아래 JSON 형식으로만, 마크다운이나 다른 설명 없이 순수 JSON만 출력해라:
-{"items":[{"title":"12분 거리 카페","status":"영업중 · 21:00까지","desc":"조용히 앉아 있기 좋음","icon":"☕","fromSaved":false,"keywords":["힐링","조용히"],"reason":"~3만원 예산 중 1만원 정도 커피값으로 쓰기 좋고, INFP 성향인 힐링·조용히 키워드와 잘 맞아서 골랐어요."}],"note":"날씨나 팁 한 줄 (없으면 빈 문자열)"}
+{"items":[{"title":"12분 거리 카페","status":"영업중 · 21:00까지","desc":"조용히 앉아 있기 좋음","icon":"☕","fromSaved":false,"keywords":["힐링","조용히"],"reason":"~3만원 예산 중 1만원 정도 커피값으로 쓰기 좋고, INFP 성향인 힐링·조용히 키워드와 잘 맞아서 골랐어요.","slots":1}],"note":"날씨나 팁 한 줄 (없으면 빈 문자열)"}
 title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, icon은 이모지 하나.`;
 
     const mbtiStr = (p.mbti && MBTI_PROFILES[p.mbti])
@@ -1424,7 +1431,11 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     const match = raw.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(match ? match[0] : raw);
     if(!parsed.items || !parsed.items.length) throw new Error('empty result');
-    parsed.items = parsed.items.map((it,i)=>({ ...it, isBest: i===0 }));
+    parsed.items = parsed.items.map((it,i)=>({
+      ...it,
+      slots: (Number.isInteger(it.slots) && it.slots >= 1 && it.slots <= 4) ? it.slots : 1,
+      isBest: i===0
+    }));
     return parsed;
   }
 
@@ -1604,9 +1615,41 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     {icon:'🧖',title:'찜질방서 밤새 뒹굴기',desc:'늦은 밤에도 갈 수 있음',minTime:3,minMoney:1,solo:'any',mood:['힐링','피곤']},
     {icon:'🍢',title:'포장마차서 어묵·꼬치',desc:'따뜻하게 속 채우기',minTime:1,minMoney:1,solo:'any',mood:['힐링','즉흥']},
     {icon:'🧊',title:'빙상장서 스케이트 타기',desc:'계절 한정 스릴 즐기기',minTime:2,minMoney:1,solo:'같이',mood:['신나게','모험']},
-    {icon:'🏕️',title:'백패킹·야간 산행',desc:'별 보며 걷기(장비 확인)',minTime:4,minMoney:1,solo:'any',mood:['모험','조용히'],dayOnly:false}
+    {icon:'🏕️',title:'백패킹·야간 산행',desc:'별 보며 걷기(장비 확인)',minTime:4,minMoney:1,solo:'any',mood:['모험','조용히'],dayOnly:false},
+
+    // 보강: 시간×예산 조합이 얕았던 칸(반나절+무료/5만원+, 30분+3만원 이상, 2시간+무료/5만원+) 보완
+    {icon:'🚵',title:'근교 둘레길 종주하기',desc:'반나절 코스로 제대로 걷기',minTime:4,minMoney:0,solo:'any',mood:['상쾌','모험','스트레스'],dayOnly:true},
+    {icon:'🏞️',title:'무료 국립공원 나들이',desc:'입장료 없는 곳 찾아가기',minTime:4,minMoney:0,solo:'any',mood:['힐링','상쾌'],dayOnly:true},
+    {icon:'🚲',title:'한강 전 구간 자전거 종주',desc:'따릉이로 멀리까지 달리기',minTime:4,minMoney:0,solo:'any',mood:['모험','상쾌','즉흥'],dayOnly:true},
+    {icon:'🚶',title:'근처 도시 무작정 걷기 여행',desc:'지도 없이 골목골목 걷기',minTime:4,minMoney:0,solo:'혼자',mood:['즉흥','모험','조용히']},
+    {icon:'🏘️',title:'동네 한 바퀴 도보 일주',desc:'평소 안 가본 골목까지',minTime:4,minMoney:0,solo:'any',mood:['힐링','즉흥','아무거나']},
+    {icon:'⛺',title:'무료 캠핑장 당일 나들이',desc:'예약만 하면 비용 없이 이용',minTime:4,minMoney:0,solo:'any',mood:['힐링','상쾌','모험'],dayOnly:true},
+    {icon:'⛵',title:'프라이빗 요트 투어',desc:'반나절 코스로 바다 즐기기',minTime:4,minMoney:3,solo:'같이',mood:['모험','신나게'],dayOnly:true},
+    {icon:'🚁',title:'헬리콥터 투어 체험',desc:'하늘에서 도시 내려다보기',minTime:4,minMoney:3,solo:'any',mood:['모험','신나게'],dayOnly:true},
+    {icon:'💆‍♀️',title:'프리미엄 스파 데이패키지',desc:'제대로 하루 힐링하기',minTime:4,minMoney:3,solo:'any',mood:['힐링','피곤']},
+    {icon:'🍽️',title:'미쉐린 레스토랑 코스',desc:'제대로 차려입고 즐기기',minTime:4,minMoney:3,solo:'any',mood:['신나게','힐링']},
+    {icon:'🏕️',title:'글램핑 데이유즈 패키지',desc:'반나절만 즐기는 캠핑감성',minTime:4,minMoney:3,solo:'any',mood:['힐링','모험']},
+    {icon:'💅',title:'프리미엄 네일아트',desc:'짧게 받고 기분 전환',minTime:1,minMoney:2,solo:'혼자',mood:['힐링','편하게']},
+    {icon:'📷',title:'전문 스냅 촬영 30분',desc:'제대로 된 사진 남기기',minTime:1,minMoney:2,solo:'같이',mood:['신나게','즉흥']},
+    {icon:'🔮',title:'프라이빗 타로 심화상담',desc:'깊이 있게 물어보기',minTime:1,minMoney:2,solo:'혼자',mood:['즉흥','힐링']},
+    {icon:'🦶',title:'발마사지 30분 코스',desc:'뭉친 발 시원하게 풀기',minTime:1,minMoney:2,solo:'혼자',mood:['힐링','피곤']},
+    {icon:'🎨',title:'즉석 초상화 그리기',desc:'짧게 특별한 선물 남기기',minTime:1,minMoney:2,solo:'같이',mood:['즉흥','신나게']},
+    {icon:'💇',title:'럭셔리 헤드스파',desc:'짧고 굵게 받는 프리미엄 케어',minTime:1,minMoney:3,solo:'혼자',mood:['힐링','피곤']},
+    {icon:'🍰',title:'오마카세 티타임',desc:'짧게 즐기는 고급 디저트',minTime:1,minMoney:3,solo:'any',mood:['힐링','신나게']},
+    {icon:'🛋️',title:'프라이빗 라운지 이용',desc:'짧게 즐기는 특별한 공간',minTime:1,minMoney:3,solo:'any',mood:['힐링','신나게']},
+    {icon:'🐩',title:'프리미엄 애견동반 카페',desc:'반려동물과 특별한 시간',minTime:1,minMoney:3,solo:'any',mood:['힐링','신나게']},
+    {icon:'🖼️',title:'무료 도슨트 전시 관람',desc:'설명 들으며 여유롭게 감상',minTime:3,minMoney:0,solo:'any',mood:['조용히','몰입'],dayOnly:true},
+    {icon:'📚',title:'시립 도서관 특별열람실',desc:'조용히 책 읽으며 몰입하기',minTime:3,minMoney:0,solo:'혼자',mood:['조용히','집중','몰입'],dayOnly:true},
+    {icon:'🎤',title:'무료 워크숍 참여하기',desc:'관심 분야 강연 들어보기',minTime:3,minMoney:0,solo:'혼자',mood:['집중','모험'],dayOnly:true},
+    {icon:'🏞️',title:'저수지·호수 둘레길',desc:'물멍하며 천천히 걷기',minTime:3,minMoney:0,solo:'any',mood:['힐링','조용히']},
+    {icon:'🍷',title:'와인 페어링 디너',desc:'제대로 차려서 즐기기',minTime:3,minMoney:3,solo:'any',mood:['힐링','신나게'],adultOnly:true},
+    {icon:'🧑‍🍳',title:'프라이빗 쿠킹클래스',desc:'셰프와 1:1로 요리하기',minTime:3,minMoney:3,solo:'혼자',mood:['모험','집중']},
+    {icon:'🥂',title:'특별한 날 파인다이닝',desc:'코스요리로 제대로 즐기기',minTime:3,minMoney:3,solo:'같이',mood:['힐링','신나게']},
+    {icon:'📸',title:'프라이빗 사진 스튜디오',desc:'제대로 꾸미고 촬영하기',minTime:3,minMoney:3,solo:'같이',mood:['신나게','즉흥']}
   ];
   const STATUS_POOL = ['지금 바로 가능','오늘 중 추천','가볍게 다녀오기 좋아요','시간 맞으면 딱 좋아요','바로 실행 가능','마음만 먹으면 바로','지금이 딱 좋은 타이밍','오늘 컨디션에 잘 맞아요','부담 없이 가능','생각난 김에 바로'];
+  // "다시 뽑기"를 눌러도 같은 조건에서 매번 똑같은 항목이 나오지 않도록, 최근 보여준 항목 title을 세션 동안만 기억한다
+  let recentlyShown = [];
 
   // 성별(p.gender)은 저장·AI 프롬프트에는 반영하지만 오프라인 폴백 점수에는 반영하지 않는다.
   // OFFLINE_BANK 168개 항목을 성별로 나눠 태깅하면 그 자체가 고정관념이 되기 쉬워서,
@@ -1646,7 +1689,8 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     );
     if(pool.length < 3) pool = safe.filter(it => inTimeBand(it) && inBudgetRange(it) && !(isNight && it.dayOnly));
     if(pool.length < 3) pool = safe.filter(it => it.minTime <= budgetTime && inBudgetRange(it) && !(isNight && it.dayOnly));
-    if(pool.length < 3) pool = safe.filter(it => it.minTime <= budgetTime && inBudgetRange(it));
+    // 예산 완전 무시로 바로 건너뛰지 않고, 한 단계 더 넓은 예산 밴드부터 시도
+    if(pool.length < 3) pool = safe.filter(it => it.minTime <= budgetTime && (budgetMoney === 0 ? it.minMoney === 0 : it.minMoney <= budgetMoney + 1));
     if(pool.length < 3) pool = safe.filter(it => it.minTime <= budgetTime); // 그래도 부족하면 예산 조건만 마지막으로 완화
     if(pool.length < 3) pool = safe.slice();
 
@@ -1671,9 +1715,12 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       const timeFitScore = Math.max(0, 3 - Math.abs(budgetTime - it.minTime) * 2);
       // 장소 적합도: 특정 장소를 적었으면 외출형을, 안 적었으면 집에서 할 수 있는 것도 동등하게
       const locScore = hasSpecificLoc ? (isAtHome(it) ? -3 : 2) : 0;
+      // 최근에 이미 보여줬던 항목은 살짝 감점 — "다시 뽑기"를 눌렀을 때 매번 똑같은 상위권이 반복되지 않게 함.
+      // mood 상한(8)보다 작게 둬서 "기분이 가장 강한 신호"라는 원칙은 깨지 않는다.
+      const noveltyScore = recentlyShown.includes(it.title) ? -3 : 0;
       return {
         it,
-        score: moodScore + mbtiScore + axisScore + ageScore + timeFitScore + locScore,
+        score: moodScore + mbtiScore + axisScore + ageScore + timeFitScore + locScore + noveltyScore,
         rand: Math.random()
       };
     });
@@ -1681,15 +1728,16 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
 
     const count = pool.length >= 4 && Math.random() < 0.5 ? 4 : 3;
 
-    // 다양성 확보: 점수가 높아도 첫 키워드가 겹치는 항목이 연달아 나오면 선택에 도움이 안 되므로
-    // 서로 성격이 다른 활동이 섞이도록 고른다(후보가 부족하면 점수순으로 채움)
+    // 다양성 확보: 점수가 높아도 대표 키워드+범주가 겹치는 항목이 연달아 나오면 선택에 도움이 안 되므로
+    // 서로 성격이 다른 활동이 섞이도록 고른다(후보가 부족하면 점수순으로 채움).
+    // mood[0]만 보면 "카페"와 "카페"가 같이 뽑힐 수 있어 categoryOf도 함께 본다.
     const picked = [];
-    const usedPrimary = new Set();
+    const usedCombo = new Set();
     for(const s of scored){
       if(picked.length >= count) break;
-      const primary = s.it.mood[0];
-      if(usedPrimary.has(primary)) continue;
-      usedPrimary.add(primary);
+      const combo = s.it.mood[0] + '|' + categoryOf(s.it);
+      if(usedCombo.has(combo)) continue;
+      usedCombo.add(combo);
       picked.push(s);
     }
     for(const s of scored){
@@ -1705,8 +1753,10 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       fromSaved:false,
       keywords: it.mood.slice(0,3),
       reason: buildReason(it, p, moodWords, mbtiKeywords, ageKeywords),
+      slots: it.minTime, // 시간표 자동 채우기가 활동 길이(30분 단위)를 알 수 있도록
       isBest: i === 0
     }));
+    recentlyShown = [...picked.map(({it})=>it.title), ...recentlyShown].slice(0, 12);
     const note = safe.length === 0
       ? '빼신 범주가 많아서 남는 활동이 없어요. 몇 개 풀어보시면 추천해드릴게요.'
       : (chosen.length < 3 ? '빼신 범주가 많아서 고를 수 있는 게 얼마 없어요.' : '');
@@ -2001,13 +2051,23 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     const autoBtn = $('timetableAuto');
     if(autoBtn) autoBtn.onclick = ()=>{
       if(!lastItems.length) return;
-      let itemIdx = 0;
-      scheduleSlots.forEach(slot=>{
-        if(!slot.item){
-          slot.item = lastItems[itemIdx % lastItems.length];
-          itemIdx++;
-        }
-      });
+      // 빈 슬롯을 30분씩 기계적으로 채우지 않고, 연속된 빈 구간마다 그 길이에 가장 잘 맞는
+      // 추천 항목을 골라 실제 소요시간(slots)만큼 이어붙인다 — 반나절 시간표도 하루 일정처럼 보이게.
+      let cursor = 0, lastPlaced = null;
+      while(cursor < scheduleSlots.length){
+        if(scheduleSlots[cursor].item){ cursor++; continue; }
+        let runEnd = cursor;
+        while(runEnd < scheduleSlots.length && !scheduleSlots[runEnd].item) runEnd++;
+        const runLen = runEnd - cursor;
+        const candidates = lastItems
+          .map(it => ({ it, fit: Math.abs((it.slots || 1) - runLen) }))
+          .sort((a,b)=> a.fit - b.fit);
+        const pick = (candidates.find(c => c.it !== lastPlaced) || candidates[0]).it;
+        const span = Math.max(1, Math.min(pick.slots || 1, runLen));
+        for(let i=0;i<span;i++) scheduleSlots[cursor+i].item = pick;
+        lastPlaced = pick;
+        cursor += span;
+      }
       pickerOpenIndex = null;
       paintTimetable();
     };
