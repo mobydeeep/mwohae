@@ -18,6 +18,7 @@ CSS, JS 전부 이 파일 안에 있다. 파일이 크므로 **전체 재작성 
 
 ```
 index.html          앱 전체 (HTML + CSS + JS)
+worker/              무료 AI 프록시(Cloudflare Workers, 선택 배포) — worker/README.md 참고
 CLAUDE.md           이 문서
 README.md           사용자용 설명
 .nojekyll           GitHub Pages에서 필요
@@ -99,11 +100,23 @@ README.md           사용자용 설명
 
 `title`/`desc`에 "동네", "근처"를 쓰면 사용자가 입력한 지역명으로 자동 치환된다.
 
+## 사용자 프로필 (나이·성별·MBTI)
+
+- "뭐하지?" 버튼(`btnStart`)을 처음 누르면 계정 로그인이 아니라 **로컬 프로필 온보딩 모달**(`mbtiModal`)이 한 번 뜬다.
+  나이·성별·MBTI를 입력(또는 스킵)하면 `profile_onboarded`가 저장되고 이후로는 바로 폼으로 진행한다.
+- 나이·MBTI는 `fallbackRecommendations` 점수(가중치표 참고)에 실제로 반영된다.
+- 성별(`userGender`)은 저장·AI 프롬프트(`fetchRecommendations`)에는 넘기지만, 오프라인 폴백 점수에는 반영하지 않는다.
+  168개 활동을 성별로 나눠 태깅하는 것 자체가 고정관념이 되기 쉬워서, 성별 반영은 문맥 판단이 가능한 AI 경로에만 맡기고
+  AI 시스템 프롬프트에 "고정관념적 취향 매칭 금지, 안전 등 실질적 관련 있을 때만 참고"라고 명시해뒀다. 이 원칙은 유지할 것.
+
 ## AI 추천
 
 - Claude 아티팩트 안: `window.storage`가 있으면 키 없이 내장 Anthropic 호출.
-- 외부 호스팅: 방문자가 **본인 키**를 넣는다. Gemini(무료) 또는 Anthropic(유료).
-- 키는 `localStorage`에만 저장하고 서버로 보내지 않는다.
+- 외부 호스팅: `AI_PROXY_URL`(index.html 상단 근처)에 배포된 무료 프록시 주소가 있으면 방문자는 키 입력 없이 바로 AI 추천을 받는다.
+  프록시는 `worker/`에 있는 Cloudflare Workers 코드로, 배포자의 무료 Gemini 키를 서버 측에서만 사용하고 IP당 하루 요청 수를 제한한다.
+  배포 방법은 `worker/README.md` 참고. `AI_PROXY_URL`이 비어 있으면(기본값) 이 경로는 건너뛴다.
+- 프록시가 없거나 방문자가 원하면, 기존처럼 **본인 키**를 직접 넣을 수도 있다(Gemini 무료 또는 Anthropic 유료). 본인 키가 있으면 프록시보다 그 키가 우선한다.
+- 키는 `localStorage`에만 저장하고 서버로 보내지 않는다. 프록시의 `GEMINI_API_KEY`는 Cloudflare Secret으로만 보관되고 브라우저로 내려오지 않는다.
 - AI 실패/키 없음 → 조용히 `fallbackRecommendations`로 폴백. **앱은 항상 동작해야 한다.**
 
 ## 저장소 어댑터

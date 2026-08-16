@@ -1,0 +1,8 @@
+name = "mwohae-ai-proxy"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# wrangler kv namespace create RATE_LIMIT 실행 후 나오는 id로 아래 값을 채우세요.
+kv_namespaces = [
+  { binding = "RATE_LIMIT", id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID" }
+]
