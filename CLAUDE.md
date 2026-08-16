@@ -139,6 +139,10 @@ AI 호출에 대한 표시가 예전엔 전혀 없었다.
 - 프록시가 없거나 방문자가 원하면, 기존처럼 **본인 키**를 직접 넣을 수도 있다(Gemini 무료 또는 Anthropic 유료). 본인 키가 있으면 프록시보다 그 키가 우선한다.
 - 키는 `localStorage`에만 저장하고 서버로 보내지 않는다. 프록시의 `GEMINI_API_KEY`는 Cloudflare Secret으로만 보관되고 브라우저로 내려오지 않는다.
 - AI 실패/키 없음 → 조용히 `fallbackRecommendations`로 폴백. **앱은 항상 동작해야 한다.**
+- Gemini 호출(`index.html`과 `worker/worker.js` 둘 다)은 `gemini-2.0-flash`처럼 날짜 박힌 모델 ID 대신
+  `gemini-flash-latest` 별칭을 쓴다. 구글이 특정 모델을 주기적으로 폐기시켜서(2026-08 기준 몇 달 단위)
+  고정 ID를 쓰면 언젠가 다시 "model no longer available" 에러가 난다. 별칭을 쓰면 그 문제가 안 생기니
+  다시 날짜 박힌 ID로 되돌리지 말 것.
 
 ## 시간표(추천 항목 → 30분 슬롯)
 

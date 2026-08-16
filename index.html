@@ -1448,7 +1448,7 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       if(apiKey && apiProvider === 'gemini'){
         // 각자 발급받은 무료 Gemini 키로 호출
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`,
           {
             method:'POST',
             headers:{ 'Content-Type':'application/json' },
