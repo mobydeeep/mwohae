@@ -445,6 +445,25 @@
     padding:2px 8px;
     border-radius:999px;
   }
+  .item-match-tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:4px;}
+  .item-match-tag{
+    font-size:11px;
+    background:#EAF3FF;
+    color:#3B6FB0;
+    padding:2px 8px;
+    border-radius:999px;
+  }
+  .source-badge{
+    display:inline-block;
+    font-size:10px;
+    font-family:'Gowun Dodum', sans-serif;
+    padding:2px 8px;
+    border-radius:999px;
+    vertical-align:middle;
+    margin-left:6px;
+  }
+  .source-badge.ai{ background:var(--amber); color:#6B4E00; }
+  .source-badge.offline{ background:var(--panel-2); color:var(--dim); }
   .item-actions{display:flex; flex-direction:column; align-items:center; gap:2px;}
   .item-save, .item-place{
     background:none; border:none; cursor:pointer; font-size:17px; padding:4px;
@@ -554,6 +573,54 @@
   }
   .slot-content.dragover{outline:2px solid var(--amber); outline-offset:1px;}
   .slot-clear{background:none; border:none; color:var(--dim); font-size:13px; cursor:pointer; flex-shrink:0;}
+  .slot-resize-row{display:flex; align-items:center; gap:4px; flex-shrink:0;}
+  .slot-resize-btn{
+    width:20px; height:20px;
+    border:1px solid var(--amber);
+    background:#fff;
+    color:var(--red-dark);
+    border-radius:6px;
+    font-size:13px;
+    line-height:1;
+    cursor:pointer;
+    padding:0;
+  }
+  .slot-resize-btn:disabled{opacity:0.3; cursor:default;}
+  .timetable-controls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:10px;
+    flex-wrap:wrap;
+  }
+  .tt-start-label{
+    font-size:11.5px;
+    color:var(--dim);
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
+  .tt-start-label input[type=time]{
+    font-family:'Gowun Dodum', sans-serif;
+    font-size:12px;
+    border:1px solid var(--panel-line);
+    border-radius:8px;
+    padding:2px 4px;
+    color:var(--text);
+    background:var(--panel-2);
+  }
+  .tt-slot-stepper{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--dim);}
+  .tt-slot-stepper button{
+    border:1px solid var(--panel-line);
+    background:var(--panel-2);
+    color:var(--text);
+    border-radius:8px;
+    padding:3px 7px;
+    font-size:11px;
+    cursor:pointer;
+  }
+  .tt-slot-stepper button:disabled{opacity:0.35; cursor:default;}
   .slot-pick-row{display:flex; flex-wrap:wrap; gap:6px;}
   .slot-pick-btn{
     background:#FFFFFF;
@@ -1311,6 +1378,8 @@
       else result._reason = 'api-error'; // 키는 있는데 호출 자체가 실패한 경우(잘못된 키·CORS·요청 오류 등) — "인터넷 연결 없음"으로 잘못 표시하지 않는다
       result._errorMsg = (e && e.message) || '';
     }
+    // AI 추천 성공 여부를 티켓 헤드 배지로 항상 보여준다(실패했을 때만 안내가 뜨는 비대칭 해소)
+    result._source = result._offline ? 'offline' : 'ai';
     lastItems = result.items || [];
     renderTicket(payload, result);
     show('screen-ticket');
@@ -1703,27 +1772,29 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       const cap = (v, max) => Math.min(v, max);
       const moodScore = cap(moodWords.length
         ? it.mood.reduce((acc,k)=> acc + (moodWords.some(w=>k.includes(w)||w.includes(k)) ? 4 : 0), 0)
-        : 0, 8);
+        : 0, 9);
       const mbtiScore = cap(mbtiKeywords.length
         ? it.mood.reduce((acc,k)=> acc + (mbtiKeywords.includes(k) ? 2 : 0), 0)
-        : 0, 4);
+        : 0, 6);
       // MBTI 4개 축과 겹치는 만큼 추가 가산 — 성향이 결과에 실제로 반영되게 함
       const axisScore = cap(mbtiAxis.length
         ? it.mood.reduce((acc,k)=> acc + (mbtiAxis.includes(k) ? 1 : 0), 0)
-        : 0, 2);
+        : 0, 3);
       const ageScore = cap(ageKeywords.length
         ? it.mood.reduce((acc,k)=> acc + (ageKeywords.includes(k) ? 1 : 0), 0)
-        : 0, 2);
+        : 0, 3);
+      // 혼자/같이를 정확히 맞춘 항목은 'any'로만 걸쳐 있는 항목보다 살짝 더 우대 — 조건 반영이 체감되게
+      const soloScore = (it.solo !== 'any' && it.solo === p.solo) ? 1 : 0;
       // 시간 적합도: 선택한 시간을 알차게 채우는 활동일수록 가산점
       const timeFitScore = Math.max(0, 3 - Math.abs(budgetTime - it.minTime) * 2);
       // 장소 적합도: 특정 장소를 적었으면 외출형을, 안 적었으면 집에서 할 수 있는 것도 동등하게
       const locScore = hasSpecificLoc ? (isAtHome(it) ? -3 : 2) : 0;
       // 최근에 이미 보여줬던 항목은 살짝 감점 — "다시 뽑기"를 눌렀을 때 매번 똑같은 상위권이 반복되지 않게 함.
-      // mood 상한(8)보다 작게 둬서 "기분이 가장 강한 신호"라는 원칙은 깨지 않는다.
+      // mood 상한(9)보다 작게 둬서 "기분이 가장 강한 신호"라는 원칙은 깨지 않는다.
       const noveltyScore = recentlyShown.includes(it.title) ? -3 : 0;
       return {
         it,
-        score: moodScore + mbtiScore + axisScore + ageScore + timeFitScore + locScore + noveltyScore,
+        score: moodScore + mbtiScore + axisScore + ageScore + soloScore + timeFitScore + locScore + noveltyScore,
         rand: Math.random()
       };
     });
@@ -1803,6 +1874,23 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
   }
 
   // ---------- render ticket ----------
+  // AI든 오프라인이든 모든 결과가 공통으로 갖는 it.keywords를 사용자 프로필과 대조해서
+  // "왜 나한테 맞는지"를 reason 문장과 별개로 한눈에 보이는 배지로도 보여준다(점수 계산과는 무관한 표시 전용 로직)
+  function matchBadges(it, p){
+    const badges = [];
+    const kws = it.keywords || [];
+    if(p.mbti && MBTI_PROFILES[p.mbti]){
+      const mk = MBTI_PROFILES[p.mbti].keywords;
+      const ax = mbtiAxisKeywords(p.mbti);
+      if(kws.some(k => mk.includes(k) || ax.includes(k))) badges.push(`🧭 ${p.mbti} 성향과 맞음`);
+    }
+    if(p.age){
+      const ak = ageBracketKeywords(p.age);
+      if(kws.some(k => ak.includes(k))) badges.push('🎂 또래 취향');
+    }
+    return badges;
+  }
+
   function renderTicket(p, result){
     const now = new Date();
     const ts = now.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -1812,6 +1900,10 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       const isSaved = savedPlaces.some(s => s.title === it.title);
       const tagsHtml = (it.keywords && it.keywords.length)
         ? `<div class="item-tags">${it.keywords.slice(0,3).map(k=>`<span class="item-tag">#${escapeHtml(k)}</span>`).join('')}</div>`
+        : '';
+      const badges = matchBadges(it, p);
+      const matchTagsHtml = badges.length
+        ? `<div class="item-match-tags">${badges.map(b=>`<span class="item-match-tag">${escapeHtml(b)}</span>`).join('')}</div>`
         : '';
       const bestBadge = it.isBest ? `<span class="best-badge">✨ 제일 추천</span>` : '';
       const decideBtn = it.isBest ? `<button class="decide-btn" data-i="${i}">🎯 고민 그만, 이걸로 결정!</button>` : '';
@@ -1823,6 +1915,7 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
           <div class="item-status">${escapeHtml(it.status||'')}</div>
           <div class="item-desc">${escapeHtml(it.desc||'')}</div>
           ${tagsHtml}
+          ${matchTagsHtml}
           ${decideBtn}
         </div>
         <div class="item-actions">
@@ -1834,7 +1927,7 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
 
     $('ticketBody').innerHTML = `
       <div class="ticket-head">
-        <div class="title">뭐하지? 발권</div>
+        <div class="title">뭐하지? 발권 <span class="source-badge ${result._source==='ai' ? 'ai' : 'offline'}">${result._source==='ai' ? '✨ AI 추천' : '🧮 기본 추천'}</span></div>
         <div class="meta">${p.loc} · ${p.time} · ${p.money} · ${p.solo}${p.age ? ' · '+p.age+'세' : ''} · ${timeOfDay}</div>
       </div>
       ${noteHtml}
@@ -1968,16 +2061,44 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     paintTimetable();
   }
 
+  // 연속된 슬롯이 같은 item을 참조하면(자동 채우기든 늘이기든) 하나의 run으로 묶어서
+  // 화면에 "같은 항목이 찍힌 여러 줄"이 아니라 하나의 정리된 블록으로 보이게 한다.
+  function computeRuns(){
+    const runs = [];
+    let i = 0;
+    while(i < scheduleSlots.length){
+      if(scheduleSlots[i].item){
+        let j = i;
+        while(j + 1 < scheduleSlots.length && scheduleSlots[j+1].item === scheduleSlots[i].item) j++;
+        runs.push({ start:i, end:j, item:scheduleSlots[i].item });
+        i = j + 1;
+      }else{
+        runs.push({ start:i, end:i, item:null });
+        i++;
+      }
+    }
+    return runs;
+  }
+
   function paintTimetable(){
     const wrap = $('timetableWrap');
-    const rows = scheduleSlots.map((slot,i)=>{
-      const label = `${fmtTime(slot.start)} ~ ${fmtTime(slot.end)}`;
+    const runs = computeRuns();
+    const rows = runs.map(run=>{
+      const label = `${fmtTime(scheduleSlots[run.start].start)} ~ ${fmtTime(scheduleSlots[run.end].end)}`;
       let inner;
-      if(slot.item){
-        inner = `<span>${slot.item.icon||'✨'} ${escapeHtml(slot.item.title)}</span><button class="slot-clear" data-slot="${i}">✕</button>`;
-      }else if(pickerOpenIndex === i && lastItems.length){
+      if(run.item){
+        const canGrow = run.end + 1 < scheduleSlots.length && !scheduleSlots[run.end+1].item;
+        const canShrink = run.end > run.start;
+        inner = `
+          <span>${run.item.icon||'✨'} ${escapeHtml(run.item.title)}</span>
+          <div class="slot-resize-row">
+            <button class="slot-resize-btn" data-action="shrink" data-run-start="${run.start}" data-run-end="${run.end}" ${canShrink?'':'disabled'} title="한 칸 줄이기">−</button>
+            <button class="slot-resize-btn" data-action="grow" data-run-start="${run.start}" data-run-end="${run.end}" ${canGrow?'':'disabled'} title="한 칸 늘이기">+</button>
+            <button class="slot-clear" data-run-start="${run.start}" data-run-end="${run.end}">✕</button>
+          </div>`;
+      }else if(pickerOpenIndex === run.start && lastItems.length){
         inner = `<div class="slot-pick-row">${lastItems.map((it,ii)=>
-          `<button class="slot-pick-btn" data-slot="${i}" data-item="${ii}" title="${escapeHtml(it.title)}">${it.icon||'✨'}</button>`
+          `<button class="slot-pick-btn" data-slot="${run.start}" data-item="${ii}" title="${escapeHtml(it.title)}">${it.icon||'✨'}</button>`
         ).join('')}</div>`;
       }else{
         inner = `<span class="slot-empty-label">탭해서 채우기</span>`;
@@ -1985,17 +2106,27 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       return `
       <div class="slot-row">
         <div class="slot-time">${label}</div>
-        <div class="slot-content ${slot.item?'filled':''}" data-slot="${i}">${inner}</div>
+        <div class="slot-content ${run.item?'filled':''}" data-slot="${run.start}">${inner}</div>
       </div>`;
     }).join('');
 
     const hasEmpty = scheduleSlots.some(s=>!s.item);
-    const hasFilled = scheduleSlots.some(s=>s.item);
+    const startInputVal = `${pad(scheduleSlots[0].start.getHours())}:${pad(scheduleSlots[0].start.getMinutes())}`;
+    const totalLabel = scheduleSlots.length % 2 === 0 ? `${scheduleSlots.length/2}시간` : `${scheduleSlots.length*30}분`;
+    const canRemoveSlot = scheduleSlots.length > 1 && !scheduleSlots[scheduleSlots.length-1].item;
 
     wrap.innerHTML = `
       <div class="timetable">
         <div class="timetable-title">📅 오늘 시간표</div>
         <div class="timetable-hint">빈 칸을 탭해서 바로 고르거나, 항목을 드래그해서 채워보세요.</div>
+        <div class="timetable-controls">
+          <label class="tt-start-label">시작 <input type="time" id="ttStartInput" value="${startInputVal}"></label>
+          <div class="tt-slot-stepper">
+            <button id="ttRemoveSlot" ${canRemoveSlot ? '' : 'disabled'} title="30분 줄이기">− 30분</button>
+            <span class="tt-slot-total">${totalLabel}</span>
+            <button id="ttAddSlot" title="30분 늘이기">+ 30분</button>
+          </div>
+        </div>
         ${rows}
         <div class="timetable-btn-row">
           ${hasEmpty ? `<button class="timetable-auto" id="timetableAuto">✨ 자동 채우기</button>` : ''}
@@ -2020,7 +2151,7 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
         }
       });
       cell.addEventListener('click', ()=>{
-        if(scheduleSlots[i].item) return; // 채워진 칸은 ✕로만 비움
+        if(scheduleSlots[i].item) return; // 채워진 칸은 ✕/스텝퍼로만 조작
         if(selectedItemIndex !== null && lastItems[selectedItemIndex]){
           scheduleSlots[i].item = lastItems[selectedItemIndex];
           selectedItemIndex = null;
@@ -2048,8 +2179,23 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     wrap.querySelectorAll('.slot-clear').forEach(btn=>{
       btn.onclick = (e)=>{
         e.stopPropagation();
-        const i = parseInt(btn.dataset.slot);
-        scheduleSlots[i].item = null;
+        const s = parseInt(btn.dataset.runStart), en = parseInt(btn.dataset.runEnd);
+        for(let i=s;i<=en;i++) scheduleSlots[i].item = null;
+        paintTimetable();
+      };
+    });
+    // 블록 늘이기/줄이기 — 드래그 대신 탭 한 번으로(모바일에서 더 안정적)
+    wrap.querySelectorAll('.slot-resize-btn').forEach(btn=>{
+      btn.onclick = (e)=>{
+        e.stopPropagation();
+        if(btn.disabled) return;
+        const s = parseInt(btn.dataset.runStart), en = parseInt(btn.dataset.runEnd);
+        const item = scheduleSlots[s].item;
+        if(btn.dataset.action === 'grow' && en+1 < scheduleSlots.length && !scheduleSlots[en+1].item){
+          scheduleSlots[en+1].item = item;
+        }else if(btn.dataset.action === 'shrink' && en > s){
+          scheduleSlots[en].item = null;
+        }
         paintTimetable();
       };
     });
@@ -2058,6 +2204,8 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       if(!lastItems.length) return;
       // 빈 슬롯을 30분씩 기계적으로 채우지 않고, 연속된 빈 구간마다 그 길이에 가장 잘 맞는
       // 추천 항목을 골라 실제 소요시간(slots)만큼 이어붙인다 — 반나절 시간표도 하루 일정처럼 보이게.
+      // 이미 몇 번 쓴 항목은 페널티를 줘서, 후보 폭이 좁아도 골고루 섞이게 한다.
+      const usage = new Map();
       let cursor = 0, lastPlaced = null;
       while(cursor < scheduleSlots.length){
         if(scheduleSlots[cursor].item){ cursor++; continue; }
@@ -2065,11 +2213,12 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
         while(runEnd < scheduleSlots.length && !scheduleSlots[runEnd].item) runEnd++;
         const runLen = runEnd - cursor;
         const candidates = lastItems
-          .map(it => ({ it, fit: Math.abs((it.slots || 1) - runLen) }))
+          .map(it => ({ it, fit: Math.abs((it.slots || 1) - runLen) + (usage.get(it.title) || 0) * 1.5 }))
           .sort((a,b)=> a.fit - b.fit);
         const pick = (candidates.find(c => c.it !== lastPlaced) || candidates[0]).it;
         const span = Math.max(1, Math.min(pick.slots || 1, runLen));
         for(let i=0;i<span;i++) scheduleSlots[cursor+i].item = pick;
+        usage.set(pick.title, (usage.get(pick.title) || 0) + 1);
         lastPlaced = pick;
         cursor += span;
       }
@@ -2082,6 +2231,33 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
     if(resetBtn) resetBtn.onclick = ()=>{
       scheduleSlots.forEach(s=> s.item=null);
       pickerOpenIndex = null;
+      paintTimetable();
+    };
+    // 시작 시각을 바꾸면 배치된 항목은 그대로 두고 시각만 통째로 이동한다
+    const startInput = $('ttStartInput');
+    if(startInput) startInput.onchange = ()=>{
+      const [hh,mm] = startInput.value.split(':').map(Number);
+      if(Number.isNaN(hh) || Number.isNaN(mm)) return;
+      const newStart = new Date(scheduleSlots[0].start);
+      newStart.setHours(hh, mm, 0, 0);
+      const delta = newStart.getTime() - scheduleSlots[0].start.getTime();
+      scheduleSlots.forEach(s=>{
+        s.start = new Date(s.start.getTime() + delta);
+        s.end = new Date(s.end.getTime() + delta);
+      });
+      paintTimetable();
+    };
+    const addSlotBtn = $('ttAddSlot');
+    if(addSlotBtn) addSlotBtn.onclick = ()=>{
+      const last = scheduleSlots[scheduleSlots.length-1];
+      scheduleSlots.push({ start:new Date(last.end), end:new Date(last.end.getTime()+30*60000), item:null });
+      paintTimetable();
+    };
+    const removeSlotBtn = $('ttRemoveSlot');
+    if(removeSlotBtn) removeSlotBtn.onclick = ()=>{
+      if(scheduleSlots.length <= 1) return;
+      if(scheduleSlots[scheduleSlots.length-1].item) return; // 채워진 슬롯은 실수로 못 지우게
+      scheduleSlots.pop();
       paintTimetable();
     };
   }
