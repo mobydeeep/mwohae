@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="뭐하지" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet">
 <style>
   :root{
     --ink:#FFF6EC;
@@ -354,7 +354,7 @@
   .ticket{
     background:var(--paper);
     color:#4A3B32;
-    font-family:'Gaegu', cursive;
+    font-family:'Gowun Dodum', sans-serif;
     padding:26px 20px 20px 20px;
     box-shadow:0 18px 36px rgba(232,98,138,0.22);
     clip-path:polygon(
@@ -376,9 +376,9 @@
     letter-spacing:1px;
     color:var(--red-dark);
   }
-  .ticket-head .meta{font-size:11px; color:#9C7F8C; margin-top:6px; line-height:1.6;}
+  .ticket-head .meta{font-size:13px; color:#9C7F8C; margin-top:6px; line-height:1.6;}
   .ticket-note{
-    font-size:13px;
+    font-size:14px;
     background:#DFF5EC;
     color:#1F6B52;
     border-radius:10px;
@@ -414,7 +414,7 @@
     background:var(--red);
     color:#fff;
     font-family:'Jua', sans-serif;
-    font-size:10px;
+    font-size:12px;
     padding:2px 8px;
     border-radius:999px;
     vertical-align:middle;
@@ -430,7 +430,7 @@
     background:var(--red);
     color:#fff;
     font-family:'Jua', sans-serif;
-    font-size:13px;
+    font-size:15px;
     cursor:pointer;
     box-shadow:0 3px 0 var(--red-dark);
   }
@@ -442,11 +442,11 @@
   }
   .item-body{flex:1;}
   .item-title{font-size:16px; font-weight:700;}
-  .item-status{font-size:12px; color:#2FA37D; margin-top:2px;}
-  .item-desc{font-size:13px; color:#8A6F7D; margin-top:3px; line-height:1.5;}
+  .item-status{font-size:14px; color:#2FA37D; margin-top:2px;}
+  .item-desc{font-size:15px; color:#8A6F7D; margin-top:3px; line-height:1.5;}
   .item-tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;}
   .item-tag{
-    font-size:11px;
+    font-size:13px;
     background:#FCE1EA;
     color:#C6467E;
     padding:2px 8px;
@@ -454,7 +454,7 @@
   }
   .item-match-tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:4px;}
   .item-match-tag{
-    font-size:11px;
+    font-size:13px;
     background:#EAF3FF;
     color:#3B6FB0;
     padding:2px 8px;
@@ -462,7 +462,7 @@
   }
   .source-badge{
     display:inline-block;
-    font-size:10px;
+    font-size:12px;
     font-family:'Gowun Dodum', sans-serif;
     padding:2px 8px;
     border-radius:999px;
@@ -493,7 +493,7 @@
     background:repeating-linear-gradient(90deg,#4A3B32 0 2px, transparent 2px 4px, #4A3B32 4px 6px, transparent 6px 9px);
     opacity:0.55;
   }
-  .ticket-foot .ts{font-size:10px; color:#9C7F8C;}
+  .ticket-foot .ts{font-size:12px; color:#9C7F8C;}
 
   .ticket-actions{display:flex; gap:10px; width:100%; max-width:340px;}
   .ticket-actions button{
@@ -503,7 +503,7 @@
     border:1px solid var(--panel-line);
     background:var(--panel);
     color:var(--text);
-    font-size:14px;
+    font-size:15px;
     cursor:pointer;
   }
   .ticket-actions .primary{
@@ -2429,7 +2429,7 @@ title은 티켓 문구처럼 짧고 구체적으로(6~14자), desc는 12~24자, 
       return `
         <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px dashed #F1C6D6;">
           <div style="width:90px;flex-shrink:0;font-family:'Gowun Dodum',sans-serif;font-size:13px;color:#AE9AA9;">${label}</div>
-          <div style="font-family:'Gaegu',cursive;font-size:16px;color:#4A3B49;">${content}</div>
+          <div style="font-family:'Gowun Dodum',sans-serif;font-size:16px;color:#4A3B49;">${content}</div>
         </div>`;
     }).join('');
 
